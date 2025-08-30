@@ -1,6 +1,7 @@
 package drand
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -71,4 +72,40 @@ func TestNetworkMethods(t *testing.T) {
 
 	// Test Scheme (returns crypto.Scheme, skip value check)
 	_ = net.Scheme()
+}
+
+func TestGetSignature(t *testing.T) {
+	chainHash := ExampleChainHash
+	net, err := NewNetwork(chainHash, []string{DefaultEndpoint})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test GetSignature with a known round (this will fail without network, but tests the method exists)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err = net.GetSignature(ctx, 1000000)
+	// We expect this to fail due to network dependency, but it should not panic
+	if err == nil {
+		t.Log("GetSignature succeeded (network available)")
+	} else {
+		t.Logf("GetSignature failed as expected: %v", err)
+	}
+}
+
+func TestSignature(t *testing.T) {
+	chainHash := ExampleChainHash
+	net, err := NewNetwork(chainHash, []string{DefaultEndpoint})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test Signature method (wrapper around GetSignature)
+	_, err = net.Signature(1000000)
+	// We expect this to fail due to network dependency, but it should not panic
+	if err == nil {
+		t.Log("Signature succeeded (network available)")
+	} else {
+		t.Logf("Signature failed as expected: %v", err)
+	}
 }

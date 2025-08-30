@@ -40,5 +40,7 @@ func TestNewRecipientAdapter(t *testing.T) {
 }
 
 func TestRecipientAdapterWrap(t *testing.T) {
-	t.Skip("Skipping test due to network dependency and tlock library integration issues")
+	t.Skip("Skipping test due to network dependency on drand API and tlock library integration issues. " +
+		"This test requires a live drand network connection for chain verification and tlock encryption. " +
+		"Consider using mocks for the drand client or integration tests in a CI environment with network access.")
 }

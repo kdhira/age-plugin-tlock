@@ -45,14 +45,7 @@ func main() {
 		log.Fatalf("Invalid configuration: %v", err)
 	}
 
-	// Handle version flag before plugin initialization
-	version := flag.Bool("version", false, "Print version information")
-	flag.Parse()
-
-	if *version {
-		printVersion()
-		os.Exit(0)
-	}
+	// fmt.Fprintf(os.Stderr, "%v\n", os.Args)
 
 	p, err := plugin.New("tlock")
 	if err != nil {
@@ -61,14 +54,6 @@ func main() {
 
 	// Register utility flags with the plugin framework
 	p.RegisterFlags(nil)
-
-	// Add our custom flags
-	generateIdentity := flag.Bool("generate-identity", false, "Generate a new identity")
-	recipientRound := flag.Uint64("recipient-round", 0, "Generate recipient for specific round")
-	recipientTime := flag.String("recipient-time", "", "Generate recipient for time (RFC3339 format)")
-	chain := flag.String("chain", "", "Drand chain hash (hex)")
-	strict := flag.Bool("strict", false, "Strict mode for identity (no chain switching)")
-	endpoint := flag.String("endpoint", cfg.DrandEndpoint, "Drand HTTP endpoint")
 
 	// HandleRecipient: parse the plugin recipient string and return an age.Recipient
 	p.HandleRecipient(func(data []byte) (age.Recipient, error) {
@@ -80,16 +65,28 @@ func main() {
 		return tlock.NewIdentityAdapter(data)
 	})
 
+	// Add our custom flags
+	version := flag.Bool("version", false, "Print version information")
+	generateIdentity := flag.Bool("generate-identity", false, "Generate a new identity")
+	recipientRound := flag.Uint64("recipient-round", 0, "Generate recipient for specific round")
+	recipientTime := flag.String("recipient-time", "", "Generate recipient for time (RFC3339 format)")
+	chain := flag.String("chain", "", "Drand chain hash (hex)")
+	strict := flag.Bool("strict", false, "Strict mode for identity (no chain switching)")
+	endpoint := flag.String("endpoint", cfg.DrandEndpoint, "Drand HTTP endpoint")
+
 	// Parse flags (this will be called automatically by p.Main() if not called before)
 	flag.Parse()
+
+	if *version {
+		printVersion()
+		os.Exit(0)
+	}
 
 	// Handle utility mode flags
 	if *generateIdentity || *recipientRound > 0 || *recipientTime != "" {
 		cli.HandleUtilityFlags(*generateIdentity, *recipientRound, *recipientTime, *chain, *strict, *endpoint)
 		os.Exit(0)
 	}
-
-	// Run plugin protocol
 	os.Exit(p.Main())
 }
 

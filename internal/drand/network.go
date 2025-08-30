@@ -126,13 +126,19 @@ func (n *Network) GetChainInfo(ctx context.Context) (*ChainInfo, error) {
 	// Use the public key from drand
 	publicKey := chainInfo.PublicKey
 
+	// Get the cryptographic scheme
+	scheme, err := crypto.SchemeFromName(chainInfo.Scheme)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get scheme from name %q: %w", chainInfo.Scheme, err)
+	}
+
 	// Extract chain information
 	info := &ChainInfo{
 		Hash:      hex.EncodeToString(n.chainHash),
 		PublicKey: publicKey,
 		Period:    int(chainInfo.Period.Seconds()),
 		Genesis:   chainInfo.GenesisTime,
-		Scheme:    crypto.Scheme{},
+		Scheme:    *scheme,
 	}
 
 	n.chainInfo = info
@@ -164,7 +170,7 @@ func (n *Network) GetSignature(ctx context.Context, round uint64) ([]byte, error
 		return nil, fmt.Errorf("failed to get signature: %w", err)
 	}
 
-	return result.GetRandomness(), nil
+	return result.GetSignature(), nil
 }
 
 // Implement tlock.Network interface

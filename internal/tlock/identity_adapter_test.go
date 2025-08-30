@@ -30,7 +30,9 @@ func TestNewIdentityAdapter(t *testing.T) {
 }
 
 func TestIdentityAdapterUnwrap(t *testing.T) {
-	t.Skip("Skipping test due to network dependency and tlock library integration issues")
+	t.Skip("Skipping test due to network dependency on drand API and tlock library integration issues. " +
+		"This test requires a live drand network connection and proper tlock cryptographic setup. " +
+		"Consider using mocks or integration tests in a CI environment with network access.")
 }
 
 func TestParseRound(t *testing.T) {

@@ -9,9 +9,9 @@
 package tlock
 
 import (
-	"bytes"
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"filippo.io/age"
@@ -27,8 +27,9 @@ import (
 // drand round and chain, creating stanzas that can only be decrypted
 // after the target round is published.
 type RecipientAdapter struct {
-	payload codec.RecipientPayload // Decoded recipient information
-	network *drand.Network         // Drand network client
+	payload     codec.RecipientPayload // Decoded recipient information
+	roundNumber uint64
+	network     *drand.Network // Drand network client
 }
 
 // NewRecipientAdapter creates a new recipient adapter from binary payload data.
@@ -73,8 +74,9 @@ func NewRecipientAdapter(data []byte) (age.Recipient, error) {
 	}
 
 	return &RecipientAdapter{
-		payload: payload,
-		network: net,
+		network:     net,
+		roundNumber: payload.Round,
+		payload:     payload,
 	}, nil
 }
 
@@ -98,24 +100,21 @@ func NewRecipientAdapter(data []byte) (age.Recipient, error) {
 //	}
 //	// stanzas[0] contains the tlock-encrypted file key
 func (r *RecipientAdapter) Wrap(fileKey []byte) ([]*age.Stanza, error) {
-	// Create tlock instance
-	tlockInstance := tlock.New(r.network)
-
-	// Encrypt the file key using streams
-	reader := bytes.NewReader(fileKey)
-	var buf bytes.Buffer
-	err := tlockInstance.Encrypt(&buf, reader, r.payload.Round)
+	ciphertext, err := tlock.TimeLock(r.network.Scheme(), r.network.PublicKey(), r.roundNumber, fileKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt file key: %w", err)
+		return nil, fmt.Errorf("encrypt dek: %w", err)
 	}
-	encryptedData := buf.Bytes()
 
-	// Create age stanza with tlock format
-	ageStanza := &age.Stanza{
+	body, err := tlock.CiphertextToBytes(r.network.Scheme(), ciphertext)
+	if err != nil {
+		return nil, fmt.Errorf("bytes: %w", err)
+	}
+
+	stanza := age.Stanza{
 		Type: "tlock",
-		Args: []string{fmt.Sprintf("%d", r.payload.Round), fmt.Sprintf("%x", r.payload.ChainHash)},
-		Body: encryptedData,
+		Args: []string{strconv.FormatUint(r.roundNumber, 10), r.network.ChainHash()},
+		Body: body,
 	}
 
-	return []*age.Stanza{ageStanza}, nil
+	return []*age.Stanza{&stanza}, nil
 }

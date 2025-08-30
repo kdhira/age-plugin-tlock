@@ -1,16 +1,18 @@
 package tlock
 
 import (
-	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"os"
+	"strconv"
 	"time"
 
 	"filippo.io/age"
+	chain "github.com/drand/drand/v2/common"
 	"github.com/drand/tlock"
 	"github.com/kdhira/age-plugin-tlock/internal/codec"
 	"github.com/kdhira/age-plugin-tlock/internal/drand"
-	timemap "github.com/kdhira/age-plugin-tlock/internal/time"
 )
 
 // IdentityAdapter implements age.Identity for time-lock decryption.
@@ -19,8 +21,9 @@ import (
 // files using drand's tlock scheme. The adapter verifies that the target
 // drand round has been published before attempting decryption.
 type IdentityAdapter struct {
-	payload codec.IdentityPayload // Decoded identity information
-	network *drand.Network        // Drand network client
+	payload        codec.IdentityPayload // Decoded identity information
+	network        *drand.Network        // Drand network client
+	trustChainhash bool
 }
 
 // NewIdentityAdapter creates a new identity adapter from binary payload data.
@@ -62,8 +65,9 @@ func NewIdentityAdapter(data []byte) (age.Identity, error) {
 	}
 
 	return &IdentityAdapter{
-		payload: payload,
-		network: net,
+		payload:        payload,
+		network:        net,
+		trustChainhash: payload.TrustChainHash,
 	}, nil
 }
 
@@ -91,46 +95,74 @@ func NewIdentityAdapter(data []byte) (age.Identity, error) {
 //	}
 //	// Use fileKey for further decryption
 func (i *IdentityAdapter) Unwrap(stanzas []*age.Stanza) ([]byte, error) {
-	// Find the tlock stanza
-	var tlockStanza *age.Stanza
+	if len(stanzas) < 1 {
+		return nil, errors.New("check stanzas length: should be at least one")
+	}
+
+	invalid := ""
 	for _, stanza := range stanzas {
-		if stanza.Type == "tlock" {
-			tlockStanza = stanza
-			break
+		if stanza.Type != "tlock" {
+			continue
 		}
-	}
-	if tlockStanza == nil {
-		return nil, fmt.Errorf("no tlock stanza found")
+
+		if len(stanza.Args) != 2 {
+			continue
+		}
+
+		roundNumber, err := strconv.ParseUint(stanza.Args[0], 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("parse block round: %w", err)
+		}
+
+		if i.network.ChainHash() != stanza.Args[1] {
+			invalid = stanza.Args[1]
+			if i.trustChainhash {
+				fmt.Fprintf(os.Stderr, "WARN: stanza using different chainhash '%s', trying to use it instead.\n", invalid)
+				err = i.network.SwitchChainHash(invalid)
+				if err != nil {
+					continue
+				}
+			} else {
+				continue
+			}
+		}
+
+		ciphertext, err := tlock.BytesToCiphertext(i.network.Scheme(), stanza.Body)
+		if err != nil {
+			return nil, fmt.Errorf("parse cipher dek: %w", err)
+		}
+
+		signature, err := i.network.Signature(roundNumber)
+		if err != nil {
+			// return nil, fmt.Errorf(
+			// 	"%w: expected round %d > %d current round",
+			// 	tlock.ErrTooEarly,
+			// 	roundNumber,
+			// 	i.network.Current(time.Now()))
+			return nil, age.ErrIncorrectIdentity
+		}
+
+		beacon := chain.Beacon{
+			Round:     roundNumber,
+			Signature: signature,
+		}
+
+		fileKey, err := tlock.TimeUnlock(i.network.Scheme(), i.network.PublicKey(), beacon, ciphertext)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt dek: %w", err)
+		}
+
+		return fileKey, nil
 	}
 
-	// Check if round is in future, return "too early" error
-	round, err := parseRound(tlockStanza.Args[0])
-	if err != nil {
-		return nil, err
-	}
-	currentTime := time.Now()
-	roundTime := timemap.RoundToTime(round, fmt.Sprintf("%x", i.payload.ChainHash))
-	if roundTime.After(currentTime) {
-		eta := timemap.GetRoundETA(round, fmt.Sprintf("%x", i.payload.ChainHash))
-		return nil, fmt.Errorf("round %d not yet published: %s", round, eta)
+	if len(invalid) > 0 {
+		return nil, fmt.Errorf("%w: current network uses %s != %s the ciphertext requires.\n"+
+			"Note that is might have been encrypted using our testnet instead", tlock.ErrWrongChainhash, i.network.ChainHash(), invalid)
 	}
 
-	// Create tlock instance for decryption
-	tlockInstance := tlock.New(i.network)
-
-	// Decrypt the file key using streams
-	reader := bytes.NewReader(tlockStanza.Body)
-	var buf bytes.Buffer
-	err = tlockInstance.Decrypt(&buf, reader)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt file key: %w", err)
-	}
-	fileKey := buf.Bytes()
-
-	return fileKey, nil
+	return nil, fmt.Errorf("check stanza type: wrong type: %w", age.ErrIncorrectIdentity)
 }
 
-// Helper functions
 func parseRound(s string) (uint64, error) {
 	// Parse uint64 from string
 	var round uint64
