@@ -25,6 +25,7 @@ import (
 //   - generateIdentity: If true, generate a new identity for the specified chain
 //   - recipientRound: Specific drand round number for recipient generation
 //   - recipientTime: RFC3339 timestamp for recipient generation (alternative to round)
+//   - recipientDuration: Duration string for recipient generation (e.g., "1h30m")
 //   - chain: Hex-encoded drand chain hash (required for all operations)
 //   - strict: Enable strict mode for identity generation
 //   - endpoint: Drand HTTP API endpoint URL
@@ -34,9 +35,9 @@ import (
 //
 // Example usage (called from main):
 //
-//	HandleUtilityFlags(true, 0, "", "52db9ba70e0cc0f6...", false, "https://api.drand.sh")
+//	HandleUtilityFlags(true, 0, "", "", "52db9ba70e0cc0f6...", false, "https://api.drand.sh")
 //	// Prints: AGE-PLUGIN-TLOCK-... and exits
-func HandleUtilityFlags(generateIdentity bool, recipientRound uint64, recipientTime, chain string, strict bool, endpoint string) {
+func HandleUtilityFlags(generateIdentity bool, recipientRound uint64, recipientTime, recipientDuration, chain string, strict bool, endpoint string) {
 	if generateIdentity {
 		if chain == "" {
 			log.Fatal("--chain is required for --generate-identity")
@@ -50,18 +51,28 @@ func HandleUtilityFlags(generateIdentity bool, recipientRound uint64, recipientT
 	}
 
 	//nolint:nestif
-	if recipientRound > 0 || recipientTime != "" {
+	if recipientRound > 0 || recipientTime != "" || recipientDuration != "" {
 		if chain == "" {
 			log.Fatal("--chain is required for recipient generation")
 		}
 		var round uint64
 		if recipientRound > 0 {
 			round = recipientRound
-		} else {
+		} else if recipientTime != "" {
 			t, err := time.Parse(time.RFC3339, recipientTime)
 			if err != nil {
 				log.Fatal("Invalid time format:", err)
 			}
+			round, err = timemap.ToRound(t, chain)
+			if err != nil {
+				log.Fatal("Failed to convert time to round:", err)
+			}
+		} else if recipientDuration != "" {
+			d, err := time.ParseDuration(recipientDuration)
+			if err != nil {
+				log.Fatal("Invalid duration format:", err)
+			}
+			t := time.Now().Add(d)
 			round, err = timemap.ToRound(t, chain)
 			if err != nil {
 				log.Fatal("Failed to convert time to round:", err)

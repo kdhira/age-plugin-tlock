@@ -14,6 +14,9 @@
 //	# Generate recipient for specific round
 //	./age-plugin-tlock --recipient-round 1000000 --chain <chain-hash>
 //
+//	# Generate recipient for duration from now
+//	./age-plugin-tlock --recipient-duration 1h30m --chain <chain-hash>
+//
 //	# Use with age CLI
 //	echo "secret" | age -r "$(./age-plugin-tlock --recipient-round 1000000 --chain <chain-hash>)" -o encrypted.txt
 package main
@@ -70,6 +73,7 @@ func main() {
 	generateIdentity := flag.Bool("generate-identity", false, "Generate a new identity")
 	recipientRound := flag.Uint64("recipient-round", 0, "Generate recipient for specific round")
 	recipientTime := flag.String("recipient-time", "", "Generate recipient for time (RFC3339 format)")
+	recipientDuration := flag.String("recipient-duration", "", "Generate recipient for duration from now (e.g., 1h30m)")
 	chain := flag.String("chain", "", "Drand chain hash (hex)")
 	strict := flag.Bool("strict", false, "Strict mode for identity (no chain switching)")
 	endpoint := flag.String("endpoint", cfg.DrandEndpoint, "Drand HTTP endpoint")
@@ -83,8 +87,8 @@ func main() {
 	}
 
 	// Handle utility mode flags
-	if *generateIdentity || *recipientRound > 0 || *recipientTime != "" {
-		cli.HandleUtilityFlags(*generateIdentity, *recipientRound, *recipientTime, *chain, *strict, *endpoint)
+	if *generateIdentity || *recipientRound > 0 || *recipientTime != "" || *recipientDuration != "" {
+		cli.HandleUtilityFlags(*generateIdentity, *recipientRound, *recipientTime, *recipientDuration, *chain, *strict, *endpoint)
 		os.Exit(0)
 	}
 	os.Exit(p.Main())

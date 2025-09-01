@@ -78,6 +78,9 @@ The plugin provides CLI utilities for generating identities and recipients:
 
 # Generate recipient for future time (RFC3339 format)
 ./age-plugin-tlock --recipient-time "2025-01-01T00:00:00Z" --chain 52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971 > recipient.txt
+
+# Generate recipient for duration from now (e.g., 1 hour 30 minutes)
+./age-plugin-tlock --recipient-duration 1h30m --chain 52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971 > recipient.txt
 ```
 
 ### Age Plugin Mode
@@ -240,10 +243,8 @@ This plugin relies on drand's threshold BLS signatures for time proofs. The secu
 # 1. Generate identity
 ./age-plugin-tlock --generate-identity --chain 52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971 > identity.txt
 
-# 2. Generate recipient for 1 hour from now (approximately)
-current_round=$(curl -s https://api.drand.sh/public/latest | jq -r .round)
-future_round=$((current_round + 1200))  # ~1 hour (3s * 1200)
-./age-plugin-tlock --recipient-round $future_round --chain 52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971 > recipient.txt
+# 2. Generate recipient for 1 hour from now
+./age-plugin-tlock --recipient-duration 1h --chain 52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971 > recipient.txt
 
 # 3. Encrypt
 echo "Secret message" | age -r "$(cat recipient.txt)" -o secret.enc
