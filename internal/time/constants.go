@@ -1,6 +1,12 @@
 package time
 
-import "time"
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/kdhira/age-plugin-tlock/internal/drand"
+)
 
 // Time constants for drand round calculations
 const (
@@ -29,16 +35,28 @@ type ChainMetadata struct {
 // chainMetadataCache caches metadata per chain hash
 var chainMetadataCache = make(map[string]*ChainMetadata)
 
-// GetChainMetadata returns cached or default metadata for a chain
-func GetChainMetadata(chainHash string) *ChainMetadata {
+// GetChainMetadata returns cached or fetched metadata for a chain
+func GetChainMetadata(chainHash string) (*ChainMetadata, error) {
 	if meta, ok := chainMetadataCache[chainHash]; ok {
-		return meta
+		return meta, nil
 	}
-	// Default to LoE mainnet
-	return &ChainMetadata{
-		Genesis: PlaceholderGenesisTime,
-		Period:  time.Duration(DefaultPeriodSeconds) * time.Second,
+
+	// Attempt to fetch chain info from drand network
+	network, err := drand.NewNetwork(chainHash, nil) // Uses default endpoint
+	if err != nil {
+		return nil, fmt.Errorf("failed to create drand network client for chain %s: %w", chainHash, err)
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	chainInfo, err := network.GetChainInfo(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch chain info: %w", err)
+	}
+
+	// Cache the fetched metadata
+	SetChainMetadata(chainHash, time.Unix(chainInfo.Genesis, 0), time.Duration(chainInfo.Period)*time.Second)
+	return chainMetadataCache[chainHash], nil
 }
 
 // SetChainMetadata sets metadata for a chain

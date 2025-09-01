@@ -10,9 +10,12 @@ func BenchmarkToRound(b *testing.B) {
 	testTime := time.Now()
 	chainHash := "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971"
 
+	// Set up test metadata to avoid network calls
+	SetChainMetadata(chainHash, PlaceholderGenesisTime, time.Duration(DefaultPeriodSeconds)*time.Second)
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = ToRound(testTime, chainHash)
+		_, _ = ToRound(testTime, chainHash)
 	}
 }
 
@@ -21,9 +24,12 @@ func BenchmarkRoundToTime(b *testing.B) {
 	round := uint64(1000000)
 	chainHash := "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971"
 
+	// Set up test metadata to avoid network calls
+	SetChainMetadata(chainHash, PlaceholderGenesisTime, time.Duration(DefaultPeriodSeconds)*time.Second)
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = RoundToTime(round, chainHash)
+		_, _ = RoundToTime(round, chainHash)
 	}
 }
 
@@ -32,8 +38,11 @@ func BenchmarkGetRoundETA(b *testing.B) {
 	round := uint64(1000000)
 	chainHash := "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971"
 
+	// Set up test metadata to avoid network calls
+	SetChainMetadata(chainHash, PlaceholderGenesisTime, time.Duration(DefaultPeriodSeconds)*time.Second)
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = GetRoundETA(round, chainHash)
+		_, _ = GetRoundETA(round, chainHash)
 	}
 }

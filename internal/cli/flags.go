@@ -62,7 +62,10 @@ func HandleUtilityFlags(generateIdentity bool, recipientRound uint64, recipientT
 			if err != nil {
 				log.Fatal("Invalid time format:", err)
 			}
-			round = timemap.ToRound(t, chain)
+			round, err = timemap.ToRound(t, chain)
+			if err != nil {
+				log.Fatal("Failed to convert time to round:", err)
+			}
 		}
 		recipient, err := codec.GenerateRecipient(round, chain, endpoint)
 		if err != nil {

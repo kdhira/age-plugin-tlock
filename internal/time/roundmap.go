@@ -20,25 +20,31 @@ import (
 //   - t: The time to convert
 //   - chainHash: Hex-encoded drand chain hash for metadata lookup
 //
-// Returns the drand round number that covers the given time.
+// Returns the drand round number that covers the given time, or an error if metadata cannot be retrieved.
 //
 // Example:
 //
-//	round := ToRound(time.Now(), "52db9ba70e0cc0f6...")
+//	round, err := ToRound(time.Now(), "52db9ba70e0cc0f6...")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
 //	fmt.Printf("Current round: %d\n", round)
-func ToRound(t time.Time, chainHash string) uint64 {
-	meta := GetChainMetadata(chainHash)
+func ToRound(t time.Time, chainHash string) (uint64, error) {
+	meta, err := GetChainMetadata(chainHash)
+	if err != nil {
+		return 0, err
+	}
 	genesis := meta.Genesis
 	period := meta.Period
 
 	if t.Before(genesis) {
-		return 0
+		return 0, nil
 	}
 
 	duration := t.Sub(genesis)
 	//nolint:gosec
 	round := uint64(duration / period)
-	return round
+	return round, nil
 }
 
 // RoundToTime converts a drand round number to the approximate publication time.
@@ -50,19 +56,25 @@ func ToRound(t time.Time, chainHash string) uint64 {
 //   - round: Drand round number
 //   - chainHash: Hex-encoded drand chain hash for metadata lookup
 //
-// Returns the estimated publication time for the round.
+// Returns the estimated publication time for the round, or an error if metadata cannot be retrieved.
 //
 // Example:
 //
-//	pubTime := RoundToTime(1000000, "52db9ba70e0cc0f6...")
+//	pubTime, err := RoundToTime(1000000, "52db9ba70e0cc0f6...")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
 //	fmt.Printf("Round published at: %s\n", pubTime.Format(time.RFC3339))
-func RoundToTime(round uint64, chainHash string) time.Time {
-	meta := GetChainMetadata(chainHash)
+func RoundToTime(round uint64, chainHash string) (time.Time, error) {
+	meta, err := GetChainMetadata(chainHash)
+	if err != nil {
+		return time.Time{}, err
+	}
 	genesis := meta.Genesis
 	period := meta.Period
 
 	//nolint:gosec
-	return genesis.Add(time.Duration(round) * period)
+	return genesis.Add(time.Duration(round) * period), nil
 }
 
 // GetRoundETA returns a human-readable estimate of when a drand round will be published.
@@ -74,17 +86,23 @@ func RoundToTime(round uint64, chainHash string) time.Time {
 //   - round: Drand round number
 //   - chainHash: Hex-encoded drand chain hash for metadata lookup
 //
-// Returns a formatted string describing the round's status and timing.
+// Returns a formatted string describing the round's status and timing, or an error if metadata cannot be retrieved.
 //
 // Example:
 //
-//	eta := GetRoundETA(1000000, "52db9ba70e0cc0f6...")
+//	eta, err := GetRoundETA(1000000, "52db9ba70e0cc0f6...")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
 //	fmt.Println(eta) // "round 1000000 expected at 2024-01-01T12:00:00Z (in 2h30m45s)"
-func GetRoundETA(round uint64, chainHash string) string {
+func GetRoundETA(round uint64, chainHash string) (string, error) {
 	now := time.Now()
-	roundTime := RoundToTime(round, chainHash)
-	if roundTime.After(now) {
-		return fmt.Sprintf("round %d expected at %s (in %v)", round, roundTime.Format(time.RFC3339), roundTime.Sub(now))
+	roundTime, err := RoundToTime(round, chainHash)
+	if err != nil {
+		return "", err
 	}
-	return fmt.Sprintf("round %d was published at %s", round, roundTime.Format(time.RFC3339))
+	if roundTime.After(now) {
+		return fmt.Sprintf("round %d expected at %s (in %v)", round, roundTime.Format(time.RFC3339), roundTime.Sub(now)), nil
+	}
+	return fmt.Sprintf("round %d was published at %s", round, roundTime.Format(time.RFC3339)), nil
 }
