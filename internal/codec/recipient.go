@@ -145,6 +145,42 @@ func ParseRecipientPayload(data []byte) (RecipientPayload, error) {
 //	}
 //	fmt.Println(recipient) // age1tlock...
 func GenerateRecipient(round uint64, chainHash string, endpoint string) (string, error) {
+	return generateRecipientInternal(round, chainHash, endpoint, false, 0)
+}
+
+// GenerateDynamicRecipient generates a dynamic recipient string for the specified duration and chain.
+//
+// It creates a recipient that calculates the target round at encryption time
+// based on current time + duration. The duration is stored in the payload
+// with a flag indicating dynamic mode.
+//
+// Parameters:
+//   - durationSeconds: Duration in seconds from encryption time
+//   - chainHash: Hex-encoded drand chain hash (64 characters)
+//   - endpoint: Drand HTTP API endpoint URL
+//
+// Returns an age-compatible recipient string or an error if the chain
+// cannot be accessed or parameters are invalid.
+//
+// Example:
+//
+//	recipient, err := GenerateDynamicRecipient(3600, "52db9ba70e0cc0f6...", "https://api.drand.sh")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	fmt.Println(recipient) // age1tlock... (with dynamic flag set)
+func GenerateDynamicRecipient(durationSeconds uint64, chainHash string, endpoint string) (string, error) {
+	if durationSeconds == 0 {
+		return "", fmt.Errorf("duration must be greater than zero")
+	}
+	if durationSeconds > 0x7FFFFFFFFFFFFFFF {
+		return "", fmt.Errorf("duration too large: %d seconds", durationSeconds)
+	}
+	return generateRecipientInternal(0, chainHash, endpoint, true, durationSeconds)
+}
+
+// generateRecipientInternal is the internal implementation for generating recipients
+func generateRecipientInternal(round uint64, chainHash string, endpoint string, isDynamic bool, durationSeconds uint64) (string, error) {
 	// Decode chainHash from hex
 	chainHashBytes := make([]byte, ChainHashLength)
 	if len(chainHash) != HexChainHashLength {
@@ -203,9 +239,16 @@ func GenerateRecipient(round uint64, chainHash string, endpoint string) (string,
 	period := time.Duration(info.Period) * time.Second
 	timemap.SetChainMetadata(chainHash, genesis, period)
 
+	var payloadRound uint64
+	if isDynamic {
+		payloadRound = (1 << 63) | durationSeconds
+	} else {
+		payloadRound = round
+	}
+
 	payload := RecipientPayload{
 		Version:     CurrentVersion,
-		Round:       round,
+		Round:       payloadRound,
 		ChainHash:   [ChainHashLength]byte(chainHashBytes),
 		SchemeID:    CurrentSchemeID, // BLS
 		DrandPubKey: pubKey,

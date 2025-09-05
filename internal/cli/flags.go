@@ -26,6 +26,7 @@ import (
 //   - recipientRound: Specific drand round number for recipient generation
 //   - recipientTime: RFC3339 timestamp for recipient generation (alternative to round)
 //   - recipientDuration: Duration string for recipient generation (e.g., "1h30m")
+//   - recipientDynamic: If true, generate dynamic recipient with duration from encryption time
 //   - chain: Hex-encoded drand chain hash (required for all operations)
 //   - strict: Enable strict mode for identity generation
 //   - endpoint: Drand HTTP API endpoint URL
@@ -35,9 +36,9 @@ import (
 //
 // Example usage (called from main):
 //
-//	HandleUtilityFlags(true, 0, "", "", "52db9ba70e0cc0f6...", false, "https://api.drand.sh")
+//	HandleUtilityFlags(true, 0, "", "", false, "52db9ba70e0cc0f6...", false, "https://api.drand.sh")
 //	// Prints: AGE-PLUGIN-TLOCK-... and exits
-func HandleUtilityFlags(generateIdentity bool, recipientRound uint64, recipientTime, recipientDuration, chain string, strict bool, endpoint string) {
+func HandleUtilityFlags(generateIdentity bool, recipientRound uint64, recipientTime, recipientDuration string, recipientDynamic bool, chain string, strict bool, endpoint string) {
 	if generateIdentity {
 		if chain == "" {
 			log.Fatal("--chain is required for --generate-identity")
@@ -51,38 +52,60 @@ func HandleUtilityFlags(generateIdentity bool, recipientRound uint64, recipientT
 	}
 
 	//nolint:nestif
-	if recipientRound > 0 || recipientTime != "" || recipientDuration != "" {
+	if recipientRound > 0 || recipientTime != "" || recipientDuration != "" || recipientDynamic {
 		if chain == "" {
 			log.Fatal("--chain is required for recipient generation")
 		}
-		var round uint64
-		if recipientRound > 0 {
-			round = recipientRound
-		} else if recipientTime != "" {
-			t, err := time.Parse(time.RFC3339, recipientTime)
-			if err != nil {
-				log.Fatal("Invalid time format:", err)
+
+		if recipientDynamic {
+			// Dynamic recipient generation
+			var durationSeconds uint64
+			if recipientDuration != "" {
+				d, err := time.ParseDuration(recipientDuration)
+				if err != nil {
+					log.Fatal("Invalid duration format:", err)
+				}
+				durationSeconds = uint64(d.Seconds())
+			} else {
+				log.Fatal("--recipient-duration is required when using --recipient-dynamic")
 			}
-			round, err = timemap.ToRound(t, chain)
+			recipient, err := codec.GenerateDynamicRecipient(durationSeconds, chain, endpoint)
 			if err != nil {
-				log.Fatal("Failed to convert time to round:", err)
+				log.Fatal(err)
 			}
-		} else if recipientDuration != "" {
-			d, err := time.ParseDuration(recipientDuration)
+			fmt.Println(recipient)
+			os.Exit(0)
+		} else {
+			// Fixed recipient generation (existing logic)
+			var round uint64
+			if recipientRound > 0 {
+				round = recipientRound
+			} else if recipientTime != "" {
+				t, err := time.Parse(time.RFC3339, recipientTime)
+				if err != nil {
+					log.Fatal("Invalid time format:", err)
+				}
+				round, err = timemap.ToRound(t, chain)
+				if err != nil {
+					log.Fatal("Failed to convert time to round:", err)
+				}
+			} else if recipientDuration != "" {
+				d, err := time.ParseDuration(recipientDuration)
+				if err != nil {
+					log.Fatal("Invalid duration format:", err)
+				}
+				t := time.Now().Add(d)
+				round, err = timemap.ToRound(t, chain)
+				if err != nil {
+					log.Fatal("Failed to convert time to round:", err)
+				}
+			}
+			recipient, err := codec.GenerateRecipient(round, chain, endpoint)
 			if err != nil {
-				log.Fatal("Invalid duration format:", err)
+				log.Fatal(err)
 			}
-			t := time.Now().Add(d)
-			round, err = timemap.ToRound(t, chain)
-			if err != nil {
-				log.Fatal("Failed to convert time to round:", err)
-			}
+			fmt.Println(recipient)
+			os.Exit(0)
 		}
-		recipient, err := codec.GenerateRecipient(round, chain, endpoint)
-		if err != nil {
-			log.Fatal(err)
-		}
-		fmt.Println(recipient)
-		os.Exit(0)
 	}
 }

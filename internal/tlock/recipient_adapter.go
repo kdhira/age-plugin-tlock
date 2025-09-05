@@ -27,9 +27,11 @@ import (
 // drand round and chain, creating stanzas that can only be decrypted
 // after the target round is published.
 type RecipientAdapter struct {
-	payload     codec.RecipientPayload // Decoded recipient information
-	roundNumber uint64
-	network     *drand.Network // Drand network client
+	payload         codec.RecipientPayload // Decoded recipient information
+	roundNumber     uint64
+	isDynamic       bool           // Whether to calculate round dynamically
+	durationSeconds uint64         // Duration in seconds for dynamic mode
+	network         *drand.Network // Drand network client
 }
 
 // NewRecipientAdapter creates a new recipient adapter from binary payload data.
@@ -73,10 +75,23 @@ func NewRecipientAdapter(data []byte) (age.Recipient, error) {
 		return nil, fmt.Errorf("failed to verify chain: %w", err)
 	}
 
+	// Check if this is a dynamic recipient (high bit of Round is set)
+	isDynamic := (payload.Round & (1 << 63)) != 0
+	var roundNumber, durationSeconds uint64
+	if isDynamic {
+		durationSeconds = payload.Round & 0x7FFFFFFFFFFFFFFF // Clear high bit
+		roundNumber = 0                                      // Will be calculated dynamically
+	} else {
+		roundNumber = payload.Round
+		durationSeconds = 0
+	}
+
 	return &RecipientAdapter{
-		network:     net,
-		roundNumber: payload.Round,
-		payload:     payload,
+		network:         net,
+		roundNumber:     roundNumber,
+		isDynamic:       isDynamic,
+		durationSeconds: durationSeconds,
+		payload:         payload,
 	}, nil
 }
 
@@ -85,6 +100,9 @@ func NewRecipientAdapter(data []byte) (age.Recipient, error) {
 // It uses drand's tlock to encrypt the file key such that it can only be
 // decrypted after the target drand round is published. The encrypted data
 // is wrapped in an age stanza with the round and chain information.
+//
+// For dynamic recipients, the target round is calculated at encryption time
+// based on the current round plus the specified duration.
 //
 // Parameters:
 //   - fileKey: The symmetric file key to encrypt (32 bytes)
@@ -100,7 +118,33 @@ func NewRecipientAdapter(data []byte) (age.Recipient, error) {
 //	}
 //	// stanzas[0] contains the tlock-encrypted file key
 func (r *RecipientAdapter) Wrap(fileKey []byte) ([]*age.Stanza, error) {
-	ciphertext, err := tlock.TimeLock(r.network.Scheme(), r.network.PublicKey(), r.roundNumber, fileKey)
+	targetRound := r.roundNumber
+
+	if r.isDynamic {
+		// Calculate target round dynamically
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		// Ensure chain info is loaded
+		chainInfo, err := r.network.GetChainInfo(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get chain info for dynamic round: %w", err)
+		}
+
+		// Get current round
+		currentRound := r.network.Current(time.Now())
+
+		// Calculate duration in rounds
+		periodSeconds := uint64(chainInfo.Period)
+		durationRounds := r.durationSeconds / periodSeconds
+		if r.durationSeconds%periodSeconds != 0 {
+			durationRounds++ // Round up
+		}
+
+		targetRound = currentRound + durationRounds
+	}
+
+	ciphertext, err := tlock.TimeLock(r.network.Scheme(), r.network.PublicKey(), targetRound, fileKey)
 	if err != nil {
 		return nil, fmt.Errorf("encrypt dek: %w", err)
 	}
@@ -112,7 +156,7 @@ func (r *RecipientAdapter) Wrap(fileKey []byte) ([]*age.Stanza, error) {
 
 	stanza := age.Stanza{
 		Type: "tlock",
-		Args: []string{strconv.FormatUint(r.roundNumber, 10), r.network.ChainHash()},
+		Args: []string{strconv.FormatUint(targetRound, 10), r.network.ChainHash()},
 		Body: body,
 	}
 

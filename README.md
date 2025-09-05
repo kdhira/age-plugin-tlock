@@ -7,6 +7,7 @@ An [age](https://github.com/FiloSottile/age) plugin that adds **time-lock encryp
 ## Features
 
 - **Time-lock encryption**: Encrypt data that becomes decryptable only after a target round
+- **Dynamic recipients**: Generate recipients where the round is calculated at encryption time
 - **Offline recipient generation**: Create recipients without network access
 - **Multiple drand networks**: Support for different drand chains (mainnet, testnet, etc.)
 - **Strict mode**: Optional strict chain validation to prevent chain switching
@@ -81,6 +82,31 @@ The plugin provides CLI utilities for generating identities and recipients:
 
 # Generate recipient for duration from now (e.g., 1 hour 30 minutes)
 ./age-plugin-tlock --recipient-duration 1h30m --chain 52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971 > recipient.txt
+
+# Generate dynamic recipient (round calculated at encryption time)
+./age-plugin-tlock --recipient-dynamic --recipient-duration 2h --chain 52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971 > recipient.txt
+```
+
+### Dynamic Recipients
+
+Dynamic recipients calculate the target round at encryption time rather than recipient creation time. This ensures the time-lock is based on when the file is actually encrypted, not when the recipient was generated.
+
+**Key differences:**
+- **Fixed recipients**: Round is fixed when recipient is created
+- **Dynamic recipients**: Round = current_round + duration_rounds (calculated during encryption)
+
+**Use cases:**
+- Ensure consistent timing regardless of when recipient is generated
+- Account for encryption delays or batch processing
+- More predictable decryption timing
+
+**Example:**
+```bash
+# Create dynamic recipient for 1 hour from encryption time
+./age-plugin-tlock --recipient-dynamic --recipient-duration 1h --chain <chain-hash> > dynamic_recipient.txt
+
+# Encrypt file (round will be current + 1 hour worth of rounds)
+echo "secret" | age -r "$(cat dynamic_recipient.txt)" -o encrypted.txt
 ```
 
 ### Age Plugin Mode
